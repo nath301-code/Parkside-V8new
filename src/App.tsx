@@ -33,6 +33,8 @@ const appId = firebaseConfig.projectId;
 // --- UTILS ---
 const getTodayString = () => new Date().toISOString().split('T')[0];
 const addDays = (d, n) => { const date = new Date(d); date.setDate(date.getDate() + n); return date.toISOString().split('T')[0]; };
+// SAFETY CHECK: Helper to get a safe name even if profile hasn't loaded
+const getSafeName = (user) => user?.displayName || "Staff Member";
 
 // --- STYLES ---
 const styles = {
@@ -40,7 +42,7 @@ const styles = {
   header: { padding: '20px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(245, 245, 244, 0.95)', backdropFilter: 'blur(10px)', position: 'sticky', top: 0, zIndex: 50, borderBottom: '1px solid rgba(0,0,0,0.05)' },
   main: { flex: 1, overflowY: 'auto', padding: '0 24px 120px 24px' },
   
-  // Refined Cards
+  // Cards
   card: { backgroundColor: 'white', borderRadius: '24px', padding: '24px', marginBottom: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', border: '1px solid rgba(0,0,0,0.03)', position: 'relative', overflow: 'hidden' },
   heroCard: { background: 'linear-gradient(145deg, #15803d 0%, #166534 100%)', borderRadius: '32px', padding: '32px', color: 'white', marginBottom: '24px', boxShadow: '0 20px 40px -12px rgba(22, 101, 52, 0.3)', position: 'relative', overflow: 'hidden' },
 
@@ -169,21 +171,23 @@ const LoginScreen = ({ onLogin, firebaseUser }) => {
 const Dashboard = ({ user, onNavigate }) => {
   const [oc, setOc] = useState(null);
   const [next, setNext] = useState(null);
+  const userName = getSafeName(user); // Use safe name
 
   useEffect(() => {
     const u1 = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'parkside_oncall'), where('date','==',getTodayString())), s=>setOc(s.empty?null:s.docs[0].data()));
     const u2 = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'parkside_rota_v3'), where('date','>=',getTodayString()), orderBy('date')), s=>{
-        const n = s.docs.map(d=>d.data()).find(sh => sh.staff.some(st => st.name.toLowerCase() === user.displayName.toLowerCase()));
+        // Safe check for name existence
+        const n = s.docs.map(d=>d.data()).find(sh => sh.staff && sh.staff.some(st => st.name && st.name.toLowerCase() === userName.toLowerCase()));
         setNext(n);
     });
     return () => { u1(); u2(); };
-  }, [user]);
+  }, [user, userName]);
 
   return (
     <div style={styles.main}>
        <div style={{ marginBottom: '32px', marginTop: '12px' }}>
           <p style={{color: '#a8a29e', fontWeight: '700', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px'}}>Good Afternoon,</p>
-          <h1 style={styles.h1}>{user.displayName.split(' ')[0]}</h1>
+          <h1 style={styles.h1}>{userName.split(' ')[0]}</h1>
        </div>
 
        {/* HERO CARD */}
@@ -251,6 +255,8 @@ const CalendarManager = ({ user, userRole }) => {
   const [adName, setAdName]=useState(''); const [adStart, setAdStart]=useState(''); const [adEnd, setAdEnd]=useState('');
   
   const [aptChild, setAptChild] = useState(''); const [aptType, setAptType] = useState(''); const [aptDate, setAptDate] = useState(''); const [aptTime, setAptTime] = useState(''); const [aptEscort, setAptEscort] = useState('');
+  
+  const userName = getSafeName(user);
 
   useEffect(() => {
     const u1 = onSnapshot(query(collection(db, 'artifacts', appId, 'public', 'data', 'parkside_rota_v3'), orderBy('date')), s => setShifts(s.docs.map(d=>({id:d.id, ...d.data()}))));
@@ -285,7 +291,7 @@ const CalendarManager = ({ user, userRole }) => {
      setShowApt(false);
   };
 
-  const myShifts = shifts.filter(s => s.staff.some(st => st.name.toLowerCase() === user.displayName.toLowerCase()));
+  const myShifts = shifts.filter(s => s.staff && s.staff.some(st => st.name && st.name.toLowerCase() === userName.toLowerCase()));
 
   return (
     <div style={styles.main}>
@@ -299,7 +305,7 @@ const CalendarManager = ({ user, userRole }) => {
           <div style={{display:'flex', flexDirection:'column', gap:'16px'}}>
              {myShifts.length === 0 && <div style={{textAlign:'center', padding:'40px', color:'#999'}}>No shifts assigned to you.</div>}
              {myShifts.map(s => {
-                const me = s.staff.find(x=>x.name.toLowerCase()===user.displayName.toLowerCase());
+                const me = s.staff.find(x=>x.name.toLowerCase()===userName.toLowerCase());
                 return (
                    <div key={s.id} onClick={()=>s.blockId && setSelectedBlock(s.blockId)} style={{...styles.card, borderLeft:'4px solid #65a30d', cursor:'pointer'}}>
                       <div style={{display:'flex', justifyContent:'space-between', marginBottom:'16px'}}>
@@ -307,7 +313,7 @@ const CalendarManager = ({ user, userRole }) => {
                             <div style={{fontSize:'22px', fontWeight:'800', color:'#1c1917'}}>{s.displayDate}</div>
                             <div style={{fontSize:'12px', fontWeight:'700', color:'#a8a29e', textTransform:'uppercase', marginTop:'2px'}}>{s.type==='adhoc' ? 'Extra Shift' : (me.day===1 ? 'Day 1 (Start)' : 'Day 2 (Finish)')}</div>
                          </div>
-                         <div style={{backgroundColor:me.type==='sleep'?'#f3e8ff':me.type==='adhoc'?'#dbeafe':'#ffedd5', color:me.type==='sleep'?'#7e22ce':me.type==='adhoc'?'#1d4ed8':'#c2410c', padding:'6px 12px', borderRadius:'8px', fontSize:'11px', fontWeight:'800', height:'fit-content'}}>{me.type==='sleep'?'SLEEP':'LATE'}</div>
+                         <div style={{backgroundColor:me.type==='sleep'?'#f3e8ff':me.type==='adhoc'?'#dbeafe':'#ffedd5', color:me.type==='sleep'?'#7e22ce':me.type==='adhoc'?'#1d4ed8':'#c2410c', padding:'6px 12px', borderRadius:'10px', fontSize:'11px', fontWeight:'800', height:'fit-content'}}>{me.type==='sleep'?'SLEEP':'LATE'}</div>
                       </div>
                       <div style={{backgroundColor:'#f5f5f4', padding:'16px', borderRadius:'16px', fontSize:'14px', fontWeight:'600', color:'#57534e', display:'flex', alignItems:'center', gap:'10px'}}>
                          <Clock size={18} className="text-[#65A30D]"/>
@@ -464,9 +470,9 @@ const HouseManager = ({ user, userRole }) => {
 
   return (
     <div style={styles.section}>
-       <div style={styles.tabContainer}>
+       <div style={{display:'flex', gap:'8px', overflowX:'auto', paddingBottom:'16px'}}>
           {['oncall','repair','receipt',...(userRole==='manager'?['user']:[])].map(k => (
-             <button key={k} onClick={()=>setTab(k)} style={tab===k ? {...styles.tabBtn, ...styles.tabActive} : styles.tabBtn}>
+             <button key={k} onClick={()=>setTab(k)} style={{padding:'12px 20px', borderRadius:'30px', fontSize:'14px', fontWeight:'700', border:'none', whiteSpace:'nowrap', backgroundColor:tab===k?'#1c1917':'white', color:tab===k?'white':'#78716c', boxShadow:tab===k?'0 8px 20px rgba(0,0,0,0.15)':'0 2px 8px rgba(0,0,0,0.05)'}}>
                 {k==='oncall'?'On Call':k==='repair'?'Repairs':k==='receipt'?'Cash':k==='user'?'Team':''}
              </button>
           ))}
@@ -566,6 +572,7 @@ const FeedView = ({ user }) => {
   const [img, setImg] = useState(null);
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const userName = getSafeName(user);
 
   useEffect(() => onSnapshot(query(collection(db,'artifacts',appId,'public','data','parkside_posts'),orderBy('timestamp','desc')), s=>setPosts(s.docs.map(d=>({id:d.id,...d.data()})))), []);
 
@@ -589,13 +596,13 @@ const FeedView = ({ user }) => {
 
   const post = async () => {
     if(!text && !img) return;
-    await addDoc(collection(db,'artifacts',appId,'public','data','parkside_posts'), { author:user.displayName, text, image:img, timestamp:serverTimestamp(), likes:[], comments:[] });
+    await addDoc(collection(db,'artifacts',appId,'public','data','parkside_posts'), { author:userName, text, image:img, timestamp:serverTimestamp(), likes:[], comments:[] });
     setText(''); setImg(null);
   };
 
   const addReaction = async (id, emoji) => {
      await updateDoc(doc(db,'artifacts',appId,'public','data','parkside_posts',id), {
-        comments: arrayUnion({ user: user.displayName, text: emoji, time: Date.now() })
+        comments: arrayUnion({ user: userName, text: emoji, time: Date.now() })
      });
   };
 
@@ -615,7 +622,7 @@ const FeedView = ({ user }) => {
 
        <div style={styles.card}>
           <div style={{display:'flex', gap:'12px'}}>
-             <div style={{width:'40px', height:'40px', borderRadius:'14px', backgroundColor:'#f4f4f5', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'700', color:'#71717a'}}>{user.displayName[0]}</div>
+             <div style={{width:'40px', height:'40px', borderRadius:'14px', backgroundColor:'#f4f4f5', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:'700', color:'#71717a'}}>{userName[0]}</div>
              <textarea style={{...styles.input, height:'80px', resize:'none', marginBottom:0, backgroundColor:'transparent', border:'none', padding:'0'}} placeholder="Share an update..." value={text} onChange={e=>setText(e.target.value)}></textarea>
           </div>
           {img && <div style={{margin:'12px 0', height:'150px', borderRadius:'12px', overflow:'hidden', position:'relative'}}><img src={img} style={{width:'100%', height:'100%', objectFit:'cover'}}/><button onClick={()=>setImg(null)} style={{position:'absolute', top:'8px', right:'8px', backgroundColor:'rgba(0,0,0,0.5)', color:'white', borderRadius:'12px', padding:'4px'}}><X size={16}/></button></div>}
